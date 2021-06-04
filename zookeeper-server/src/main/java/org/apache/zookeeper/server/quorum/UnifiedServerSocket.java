@@ -198,6 +198,7 @@ public class UnifiedServerSocket extends ServerSocket {
          * @param allowInsecureConnection
          * @param prependableSocket
          */
+        @SuppressWarnings({"objectconstruction:required.method.not.called"}) // FP: sslSocket cannot have a value when it's overwritten here
         private UnifiedSocket(X509Util x509Util, boolean allowInsecureConnection, @Owning PrependableSocket prependableSocket) {
             this.x509Util = x509Util;
             this.allowInsecureConnection = allowInsecureConnection;
