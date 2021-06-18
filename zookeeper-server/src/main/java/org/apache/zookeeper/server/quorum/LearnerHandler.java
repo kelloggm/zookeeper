@@ -51,6 +51,10 @@ import org.apache.zookeeper.server.quorum.QuorumPeer.LearnerType;
 import org.apache.zookeeper.server.quorum.auth.QuorumAuthServer;
 import org.apache.zookeeper.server.util.MessageTracker;
 import org.apache.zookeeper.server.util.ZxidUtils;
+import org.checkerframework.checker.objectconstruction.qual.NotOwning;
+import org.checkerframework.checker.objectconstruction.qual.Owning;
+import org.checkerframework.checker.mustcall.qual.MustCall;
+import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethods;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,13 +63,13 @@ import org.slf4j.LoggerFactory;
  * learner. All communication with a learner is handled by this
  * class.
  */
-public class LearnerHandler extends ZooKeeperThread {
+public @MustCall("shutdown") class LearnerHandler extends ZooKeeperThread {
 
     private static final Logger LOG = LoggerFactory.getLogger(LearnerHandler.class);
 
-    protected final Socket sock;
+    protected final @Owning Socket sock;
 
-    public Socket getSocket() {
+    @NotOwning public Socket getSocket() {
         return sock;
     }
 
@@ -259,7 +263,7 @@ public class LearnerHandler extends ZooKeeperThread {
      */
     private LearnerSyncThrottler syncThrottler = null;
 
-    LearnerHandler(Socket sock, BufferedInputStream bufferedInput, LearnerMaster learnerMaster) throws IOException {
+    LearnerHandler(@Owning Socket sock, BufferedInputStream bufferedInput, LearnerMaster learnerMaster) throws IOException {
         super("LearnerHandler-" + sock.getRemoteSocketAddress());
         this.sock = sock;
         this.learnerMaster = learnerMaster;
@@ -1042,6 +1046,7 @@ public class LearnerHandler extends ZooKeeperThread {
         return queuedZxid;
     }
 
+    @EnsuresCalledMethods(value="this.sock", methods="close")
     public void shutdown() {
         // Send the packet of death
         try {
@@ -1050,12 +1055,12 @@ public class LearnerHandler extends ZooKeeperThread {
         } catch (InterruptedException e) {
             LOG.warn("Ignoring unexpected exception", e);
         }
-        try {
-            if (sock != null && !sock.isClosed()) {
+        if (sock != null && !sock.isClosed()) {
+            try {
                 sock.close();
+            } catch (IOException e) {
+                LOG.warn("Ignoring unexpected exception during socket close", e);
             }
-        } catch (IOException e) {
-            LOG.warn("Ignoring unexpected exception during socket close", e);
         }
         this.interrupt();
         learnerMaster.removeLearnerHandler(this);

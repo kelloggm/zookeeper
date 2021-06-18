@@ -49,17 +49,23 @@ import org.apache.zookeeper.server.command.SetTraceMaskCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
+
 /**
  * This class handles communication with clients using NIO. There is one per
  * client, but only one thread doing the communication.
  */
+@MustCall("close")
 public class NIOServerCnxn extends ServerCnxn {
 
     private static final Logger LOG = LoggerFactory.getLogger(NIOServerCnxn.class);
 
     private final NIOServerCnxnFactory factory;
 
-    private final SocketChannel sock;
+    private final @Owning SocketChannel sock;
 
     private final SelectorThread selectorThread;
 
@@ -86,7 +92,7 @@ public class NIOServerCnxn extends ServerCnxn {
      */
     private final boolean clientTcpKeepAlive = Boolean.getBoolean("zookeeper.clientTcpKeepAlive");
 
-    public NIOServerCnxn(ZooKeeperServer zk, SocketChannel sock, SelectionKey sk, NIOServerCnxnFactory factory, SelectorThread selectorThread) throws IOException {
+    public NIOServerCnxn(ZooKeeperServer zk, @Owning SocketChannel sock, SelectionKey sk, NIOServerCnxnFactory factory, SelectorThread selectorThread) throws IOException {
         super(zk);
         this.sock = sock;
         this.sk = sk;
@@ -577,11 +583,14 @@ public class NIOServerCnxn extends ServerCnxn {
      * Close the cnxn and remove it from the factory cnxns list.
      */
     @Override
+    @EnsuresCalledMethods(value="sock", methods="close")
     public void close(DisconnectReason reason) {
         disconnectReason = reason;
         close();
     }
 
+    @EnsuresCalledMethods(value="sock", methods="close")
+    @SuppressWarnings("objectconstruction:contracts.postcondition.not.satisfied") // FP dependent on method call: factory.removeCnxn(this) only returns false when the object has already had close() called on it
     private void close() {
         setStale();
         if (!factory.removeCnxn(this)) {
@@ -607,6 +616,10 @@ public class NIOServerCnxn extends ServerCnxn {
     /**
      * Close resources associated with the sock of this cnxn.
      */
+    @EnsuresCalledMethods(value="sock", methods="close")
+    @SuppressWarnings({
+           "objectconstruction:contracts.postcondition.not.satisfied", // FP missing JDK annotation (checker bug): java.nio.channels.Channel#isOpen lacks "EnsuresCalledMethodsIf(expression="this", result=false, methods={"close"})" (validated)
+    })
     private void closeSock() {
         if (!sock.isOpen()) {
             return;
@@ -627,6 +640,8 @@ public class NIOServerCnxn extends ServerCnxn {
     /**
      * Close resources associated with a sock.
      */
+    @SuppressWarnings({"objectconstruction:contracts.postcondition.not.satisfied"}) // FP nullness reasoning: either sock is null (no need to call anything), or sock.close() gets called
+    @EnsuresCalledMethods(value="#1", methods="close")
     public static void closeSock(SocketChannel sock) {
         if (!sock.isOpen()) {
             return;

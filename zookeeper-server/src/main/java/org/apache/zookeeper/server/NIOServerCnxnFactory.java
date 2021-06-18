@@ -41,6 +41,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 /**
  * NIOServerCnxnFactory implements a multi-threaded ServerCnxnFactory using
  * NIO non-blocking socket calls. Communication between threads is handled via
@@ -102,9 +106,10 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
      * of code shared by the AcceptThread (which selects on the listen socket)
      * and SelectorThread (which selects on client connections) classes.
      */
+    @InheritableMustCall("closeSelector")
     private abstract class AbstractSelectThread extends ZooKeeperThread {
 
-        protected final Selector selector;
+        protected final @Owning Selector selector;
 
         public AbstractSelectThread(String name) throws IOException {
             super(name);
@@ -122,6 +127,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
          * exit and no operation is going to be performed on the Selector or
          * SelectionKey
          */
+        @EnsuresCalledMethods(value="this.selector", methods="close")
         protected void closeSelector() {
             try {
                 selector.close();
@@ -140,6 +146,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
             }
         }
 
+        @EnsuresCalledMethods(value="#1", methods="close")
         protected void fastCloseSock(SocketChannel sc) {
             if (sc != null) {
                 try {
@@ -450,6 +457,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
          * Iterate over the queue of accepted connections that have been
          * assigned to this thread but not yet placed on the selector.
          */
+        @SuppressWarnings("objectconstruction:required.method.not.called") // FP private method and application invariant: If `register()` throws a ClosedSocketException or CancelledKeyException, accepted could be leaked. Mike and I believe that the code *probably* respects the requirements that this imposes: that processAcceptedConnections only be called when the selector is open and the key has not been cancelled. These requirements are not documented, and this class has methods that would allow a client to violate either of them. However, this method is private, so it might be okay. We are conservatively marking this as a false positive under the assumption that the code is correct. (validated)
         private void processAcceptedConnections() {
             SocketChannel accepted;
             while (!stopped && (accepted = acceptedQueue.poll()) != null) {
@@ -571,7 +579,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
 
     }
 
-    ServerSocketChannel ss;
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP initializing owning field (checker bug): This error doesn't even include a "reason for going out of scope". I'm really not sure why it's issued, but I think it's a bug? (validated)
+    @Owning ServerSocketChannel ss;
 
     /**
      * We use this buffer to do efficient socket I/O. Because I/O is handled
@@ -620,6 +629,11 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     private final Set<SelectorThread> selectorThreads = new HashSet<SelectorThread>();
 
     @Override
+    @SuppressWarnings({
+            "objectconstruction:required.method.not.called", // FP exception reasoning: assignment to owning field.  ss is bound before configureBlocking, which can throw an exception, is called. If configureBlocking does throw an exception, though, it is caught - so the caller of reconfigure() will still be able to safely close out this, as they should. (validated)
+            "objectconstruction:reset.not.owning" // FP resource alias: calls to bind() on ss.socket() require the CreatesObligation("this") annotation (because ss is an owning field), but the checker doesn't use the fact that ss.socket() is a resource alias of ss and so issues this error (validated)
+    })
+    @CreatesObligation("this")
     public void configure(InetSocketAddress addr, int maxcc, int backlog, boolean secure) throws IOException {
         if (secure) {
             throw new UnsupportedOperationException("SSL isn't supported in NIOServerCnxn");
@@ -671,6 +685,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         acceptThread = new AcceptThread(ss, addr, selectorThreads);
     }
 
+    @EnsuresCalledMethods(value="#1", methods="close")
     private void tryClose(ServerSocketChannel s) {
         try {
             s.close();
@@ -680,6 +695,11 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     }
 
     @Override
+    @CreatesObligation("this")
+    @SuppressWarnings({
+        "objectconstruction:required.method.not.called", // FP exception reasoning: assignment to owning field.  ss is bound before configureBlocking, which can throw an exception, is called. If configureBlocking does throw an exception, though, it is caught - so the caller of reconfigure() will still be able to safely close out this, as they should. (validated)
+        "objectconstruction:reset.not.owning" // FP resource alias: the call to bind() on ss.socket() requires the CreatesObligation("this") annotation (because ss is an owning field), but the checker doesn't use the fact that ss.socket() is a resource alias of ss and so issues this error (validated)
+    })
     public void reconfigure(InetSocketAddress addr) {
         ServerSocketChannel oldSS = ss;
         try {
@@ -823,7 +843,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         touchCnxn(cnxn);
     }
 
-    protected NIOServerCnxn createConnection(SocketChannel sock, SelectionKey sk, SelectorThread selectorThread) throws IOException {
+    protected NIOServerCnxn createConnection(@Owning SocketChannel sock, SelectionKey sk, SelectorThread selectorThread) throws IOException {
         return new NIOServerCnxn(zkServer, sock, sk, this, selectorThread);
     }
 

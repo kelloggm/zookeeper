@@ -39,11 +39,16 @@ import org.apache.zookeeper.client.ZKClientConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 public class ClientCnxnSocketNIO extends ClientCnxnSocket {
 
     private static final Logger LOG = LoggerFactory.getLogger(ClientCnxnSocketNIO.class);
 
-    private final Selector selector = Selector.open();
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP initializing owning field (checker bug): (validated)
+    private final @Owning Selector selector = Selector.open();
 
     private SelectionKey sockKey;
 
@@ -219,12 +224,12 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
     }
 
     @Override
+    @EnsuresCalledMethods(value="this.selector", methods="close")
     void close() {
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Doing client selector close");
+        }
         try {
-            if (LOG.isTraceEnabled()) {
-                LOG.trace("Doing client selector close");
-            }
-
             selector.close();
 
             if (LOG.isTraceEnabled()) {
@@ -240,7 +245,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
      * @return the created socket channel
      * @throws IOException
      */
-    SocketChannel createSock() throws IOException {
+    @MustCall({}) SocketChannel createSock() throws IOException {
         SocketChannel sock;
         sock = SocketChannel.open();
         sock.configureBlocking(false);
@@ -304,6 +309,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
         return localSocketAddress;
     }
 
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP resource alias: socket is a resource alias of the owning field selector, so it doesn't need to be closed (validated)
     private void updateSocketAddresses() {
         Socket socket = ((SocketChannel) sockKey.channel()).socket();
         localSocketAddress = socket.getLocalSocketAddress();

@@ -61,6 +61,8 @@ import org.apache.zookeeper.txn.Txn;
 import org.apache.zookeeper.txn.TxnHeader;
 import org.apache.zookeeper.util.ServiceUtils;
 
+import org.checkerframework.checker.objectconstruction.qual.Owning;
+
 public class TxnLogToolkit implements Closeable {
 
     static class TxnLogToolkitException extends Exception {
@@ -360,6 +362,7 @@ public class TxnLogToolkit implements Closeable {
         return new String(data, StandardCharsets.UTF_8);
     }
 
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP private method and application invariant: for "txnFis = ...": this method is called only from the constructor and is the only assignment to txnFis. (validated)
     private void openTxnLogFile() throws FileNotFoundException {
         txnFis = new FileInputStream(txnLogFile);
         logStream = BinaryInputArchive.getArchive(txnFis);
@@ -371,6 +374,7 @@ public class TxnLogToolkit implements Closeable {
         }
     }
 
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP private method and application invariant: for "recoveryFos = ...": this method is called only from the constructor and is the only assignment to recoveryFos. (validated)
     private void openRecoveryFile() throws FileNotFoundException {
         recoveryFos = new FileOutputStream(recoveryLogFile);
         recoveryOa = BinaryOutputArchive.getArchive(recoveryFos);

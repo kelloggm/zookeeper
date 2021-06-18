@@ -52,6 +52,10 @@ import org.apache.zookeeper.txn.TxnHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 /**
  * This class implements the TxnLog interface. It provides api's
  * to access the txnlogs and add entries to it.
@@ -146,7 +150,7 @@ public class FileTxnLog implements TxnLog, Closeable {
     }
 
     long lastZxidSeen;
-    volatile BufferedOutputStream logStream = null;
+    volatile @Owning BufferedOutputStream logStream = null;
     volatile OutputArchive oa;
     volatile FileOutputStream fos = null;
 
@@ -232,10 +236,12 @@ public class FileTxnLog implements TxnLog, Closeable {
      * rollover the current log file to a new one.
      * @throws IOException
      */
+    @SuppressWarnings({"objectconstruction:required.method.not.called", "objectconstruction:missing.reset.mustcall"}) // TP: see below (validated)
     public synchronized void rollLog() throws IOException {
         if (logStream != null) {
             this.logStream.flush();
             prevLogsRunningTotal += getCurrentLogSize();
+            // TP: logStream clearly needs to be closed (see the next method!), but this just...doesn't? I have no idea why?
             this.logStream = null;
             oa = null;
 
@@ -247,12 +253,13 @@ public class FileTxnLog implements TxnLog, Closeable {
      * close all the open file handles
      * @throws IOException
      */
+    @EnsuresCalledMethods(value="logStream", methods="close")
     public synchronized void close() throws IOException {
-        if (logStream != null) {
-            logStream.close();
-        }
         for (FileOutputStream log : streamsToFlush) {
             log.close();
+        }
+        if (logStream != null) {
+            logStream.close();
         }
     }
 
@@ -267,6 +274,8 @@ public class FileTxnLog implements TxnLog, Closeable {
     }
 
     @Override
+    @CreatesObligation("this")
+    @SuppressWarnings("objectconstruction:required.method.not.called") // TP: for the required.method.not.called error, see comment below. This warning suppresses the related warnings. (validated)
     public synchronized boolean append(TxnHeader hdr, Record txn, TxnDigest digest) throws IOException {
         if (hdr == null) {
             return false;
@@ -284,6 +293,8 @@ public class FileTxnLog implements TxnLog, Closeable {
             LOG.info("Creating new log file: {}", Util.makeLogName(hdr.getZxid()));
 
             logFileWrite = new File(logDir, Util.makeLogName(hdr.getZxid()));
+            // TP: fos is eventually closed by adding it to streamsToFlush, but the call to fhdr.serialize can throw an exception
+            // before that actually happens, which would cause it to leak.
             fos = new FileOutputStream(logFileWrite);
             logStream = new BufferedOutputStream(fos);
             oa = BinaryOutputArchive.getArchive(logStream);
@@ -373,6 +384,7 @@ public class FileTxnLog implements TxnLog, Closeable {
         return zxid;
     }
 
+    @EnsuresCalledMethods(value="#1", methods="close")
     private void close(TxnIterator itr) {
         if (itr != null) {
             try {
@@ -387,6 +399,7 @@ public class FileTxnLog implements TxnLog, Closeable {
      * commit the logs. make sure that everything hits the
      * disk
      */
+    @SuppressWarnings("objectconstruction:required.method.not.called") // FP container of owners: requires container support for list of owners (validated)
     public synchronized void commit() throws IOException {
         if (logStream != null) {
             logStream.flush();
@@ -479,6 +492,7 @@ public class FileTxnLog implements TxnLog, Closeable {
             }
             long pos = input.getPosition();
             // now, truncate at the current position
+            @SuppressWarnings("objectconstruction:required.method.not.called") // TP: setLength can throw, which would cause raf not to be closed. (validated)
             RandomAccessFile raf = new RandomAccessFile(itr.logFile, "rw");
             raf.setLength(pos);
             raf.close();
@@ -550,7 +564,8 @@ public class FileTxnLog implements TxnLog, Closeable {
     static class PositionInputStream extends FilterInputStream {
 
         long position;
-        protected PositionInputStream(InputStream in) {
+
+        protected @MustCallAlias PositionInputStream(@MustCallAlias InputStream in) {
             super(in);
             position = 0;
         }
@@ -625,7 +640,7 @@ public class FileTxnLog implements TxnLog, Closeable {
         InputArchive ia;
         static final String CRC_ERROR = "CRC check failed";
 
-        PositionInputStream inputStream = null;
+        @Owning PositionInputStream inputStream = null;
         //stored files is the list of files greater than
         //the zxid we are looking for.
         private ArrayList<File> storedFiles;
@@ -640,6 +655,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          *        a given zxid
          * @throws IOException
          */
+        @SuppressWarnings("objectconstruction:reset.not.owning") // FP CreatesObligation method called by constructor: (validated)
         public FileTxnIterator(File logDir, long zxid, boolean fastForward) throws IOException {
             this.logDir = logDir;
             this.zxid = zxid;
@@ -669,6 +685,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          * this is inclusive of the zxid
          * @throws IOException
          */
+        @CreatesObligation("this")
         void init() throws IOException {
             storedFiles = new ArrayList<>();
             List<File> files = Util.sortDataDir(
@@ -705,6 +722,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          * new file to be read
          * @throws IOException
          */
+        @CreatesObligation("this")
         private boolean goToNextLog() throws IOException {
             if (storedFiles.size() > 0) {
                 this.logFile = storedFiles.remove(storedFiles.size() - 1);
@@ -735,6 +753,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          * @param logFile the file to read.
          * @throws IOException
          **/
+        @CreatesObligation("this")
         protected InputArchive createInputArchive(File logFile) throws IOException {
             if (inputStream == null) {
                 inputStream = new PositionInputStream(new BufferedInputStream(new FileInputStream(logFile)));
@@ -759,6 +778,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          * @return true if there is more transactions to be read
          * false if not.
          */
+        @CreatesObligation("this")
         public boolean next() throws IOException {
             if (ia == null) {
                 return false;
@@ -827,6 +847,7 @@ public class FileTxnLog implements TxnLog, Closeable {
          * close the iterator
          * and release the resources.
          */
+        @EnsuresCalledMethods(value="this.inputStream", methods="close")
         public void close() throws IOException {
             if (inputStream != null) {
                 inputStream.close();

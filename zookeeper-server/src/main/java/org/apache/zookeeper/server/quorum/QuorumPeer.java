@@ -83,6 +83,10 @@ import org.apache.zookeeper.server.util.ZxidUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 /**
  * This class manages the quorum protocol. There are three states this server
  * can be in:
@@ -602,9 +606,9 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         return shouldUsePortUnification;
     }
 
-    private final QuorumX509Util x509Util;
+    private final @Owning QuorumX509Util x509Util;
 
-    QuorumX509Util getX509Util() {
+    @NotOwning QuorumX509Util getX509Util() {
         return x509Util;
     }
 
@@ -994,7 +998,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
     Election electionAlg;
 
-    ServerCnxnFactory cnxnFactory;
+    @Owning ServerCnxnFactory cnxnFactory;
     ServerCnxnFactory secureCnxnFactory;
 
     private FileTxnSnapLog logFactory = null;
@@ -1332,6 +1336,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     boolean shuttingDownLE = false;
 
     @Override
+    @SuppressWarnings("objectconstruction:reset.not.owning") // FP CreatesObligation always followed by close(): observer and follower are both set by this method, but this method is also responsible for shutting them down. Note that the calls to setObserver and setFollower are in try blocks whose finally blocks call the required methods on the relevant field. (validated)
     public void run() {
         updateThreadName();
 
@@ -1994,6 +1999,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         this.quorumListenOnAllIPs = quorumListenOnAllIPs;
     }
 
+    @CreatesObligation("this")
     public void setCnxnFactory(ServerCnxnFactory cnxnFactory) {
         this.cnxnFactory = cnxnFactory;
     }

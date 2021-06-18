@@ -24,6 +24,10 @@ import java.io.PushbackInputStream;
 import java.net.Socket;
 import java.net.SocketImpl;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 public class PrependableSocket extends Socket {
 
     private PushbackInputStream pushbackInputStream;
@@ -33,7 +37,7 @@ public class PrependableSocket extends Socket {
     }
 
     @Override
-    public InputStream getInputStream() throws IOException {
+    public @MustCallAlias InputStream getInputStream(@MustCallAlias PrependableSocket this) throws IOException {
         if (pushbackInputStream == null) {
             return super.getInputStream();
         }

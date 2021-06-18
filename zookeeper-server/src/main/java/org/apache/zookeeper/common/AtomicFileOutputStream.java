@@ -26,6 +26,8 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.mustcall.qual.MustCallAlias;
+
 /*
  * This code is originally from HDFS, see the similarly named files there
  * in case of bug fixing, history, etc...

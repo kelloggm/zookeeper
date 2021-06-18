@@ -34,6 +34,10 @@ import org.apache.zookeeper.txn.TxnHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.checkerframework.checker.objectconstruction.qual.*;
+import org.checkerframework.checker.calledmethods.qual.*;
+import org.checkerframework.checker.mustcall.qual.*;
+
 /**
  * Observers are peers that do not take part in the atomic broadcast protocol.
  * Instead, they are informed of successful proposals by the Leader. Observers
@@ -97,6 +101,8 @@ public class Observer extends Learner {
      * the main method called by the observer to observe the leader
      * @throws Exception
      */
+    @SuppressWarnings("objectconstruction:reset.not.owning") // FP CreatesObligation should permit the call (checker bug): this error is issued at the call to connectToLeader() below, even though there is an @CreatesObligation("this") annotation on this method which should prevent it. (validated)
+    @CreatesObligation("this")
     void observeLeader() throws Exception {
         zk.registerJMX(new ObserverBean(this, zk), self.jmxLocalPeerBean);
         long connectTime = 0;
@@ -239,6 +245,7 @@ public class Observer extends Learner {
     /**
      * Shutdown the Observer.
      */
+    @EnsuresCalledMethods(value="this.sock", methods="close")
     public void shutdown() {
         LOG.info("shutdown Observer");
         super.shutdown();
